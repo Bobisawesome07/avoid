@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Department Store Bathroom Cleaning Simulator 1996</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=VT323&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'VT323', monospace;
+            touch-action: manipulation;
+            background-color: #C0C0C0; /* Classic Windows 95 gray */
+        }
+        .win95-border {
+            border-style: solid;
+            border-width: 2px;
+            border-left-color: #FFFFFF;
+            border-top-color: #FFFFFF;
+            border-right-color: #000000;
+            border-bottom-color: #000000;
+            box-shadow: 2px 2px 0 #808080;
+        }
+        .win95-border-inset {
+            border-style: solid;
+            border-width: 2px;
+            border-left-color: #000000;
+            border-top-color: #000000;
+            border-right-color: #FFFFFF;
+            border-bottom-color: #FFFFFF;
+        }
+        .win95-blue-header {
+            background-color: #000080; /* Classic Windows blue */
+            color: white;
+        }
+        /* Hide scrollbars */
+        ::-webkit-scrollbar { display: none; }
+        -ms-overflow-style: none;
+        scrollbar-width: none;
+    </style>
+</head>
+<body class="flex flex-col items-center justify-center min-h-screen p-4">
+
+    <div id="game-window" class="w-full max-w-2xl win95-border bg-[#C0C0C0]">
+        <div class="win95-blue-header p-1 flex justify-between items-center text-xl">
+            <p>C:\BATHROOM.EXE</p>
+            <div class="flex space-x-1">
+                <div class="w-6 h-6 win95-border bg-[#C0C0C0] text-black text-center font-bold">_</div>
+                <div class="w-6 h-6 win95-border bg-[#C0C0C0] text-black text-center font-bold">□</div>
+                <div class="w-6 h-6 win95-border bg-[#C0C0C0] text-black text-center font-bold">X</div>
+            </div>
+        </div>
+        
+        <div id="ui-top" class="flex justify-between p-2 text-2xl win95-border-inset m-1">
+            <p id="timer-display">TIME: 60</p>
+            <p id="messes-display">MESSES: 0/10</p>
+        </div>
+
+        <div class="relative w-full m-1" style="padding-bottom: 75%;"> <!-- Aspect ratio container -->
+            <canvas id="gameCanvas" class="absolute top-0 left-0 w-full h-full win95-border-inset bg-[#b2d8b2]"></canvas>
+            
+            <!-- Modal Screens -->
+            <div id="modal-screen" class="hidden absolute inset-0 bg-black bg-opacity-50 flex-col items-center justify-center text-center p-4">
+                 <div class="win95-border bg-[#C0C0C0] p-4 w-11/12 max-w-md">
+                    <div class="win95-blue-header p-1 mb-4">
+                        <p id="modal-title">SYSTEM MESSAGE</p>
+                    </div>
+                    <p id="modal-text" class="text-black text-3xl mb-6">TEXT</p>
+                    <button id="modal-btn" class="win95-border bg-[#C0C0C0] py-2 px-8 text-2xl hover:bg-[#a0a0a0] active:win95-border-inset">
+                        OK
+                    </button>
+                 </div>
+            </div>
+        </div>
+
+        <!-- On-screen controls for mobile -->
+        <div id="touch-controls" class="flex justify-between w-full p-2">
+            <button id="left-btn" class="win95-border bg-[#C0C0C0] font-bold py-4 w-1/3 rounded-none text-3xl select-none active:win95-border-inset">◀</button>
+            <div class="w-1/3"></div>
+            <button id="right-btn" class="win95-border bg-[#C0C0C0] font-bold py-4 w-1/3 rounded-none text-3xl select-none active:win95-border-inset">▶</button>
+        </div>
+         <div id="touch-controls-vertical" class="flex justify-center w-full px-2 pb-2">
+            <button id="up-btn" class="win95-border bg-[#C0C0C0] font-bold py-4 w-1/3 rounded-none text-3xl select-none active:win95-border-inset">▲</button>
+            <button id="down-btn" class="win95-border bg-[#C0C0C0] font-bold py-4 w-1/3 rounded-none text-3xl select-none active:win95-border-inset ml-2">▼</button>
+        </div>
+    </div>
+
+    <script>
+        // --- DOM Elements ---
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const timerDisplay = document.getElementById('timer-display');
+        const messesDisplay = document.getElementById('messes-display');
+        const modalScreen = document.getElementById('modal-screen');
+        const modalTitle = document.getElementById('modal-title');
+        const modalText = document.getElementById('modal-text');
+        const modalBtn = document.getElementById('modal-btn');
+        const upBtn = document.getElementById('up-btn');
+        const downBtn = document.getElementById('down-btn');
+        const leftBtn = document.getElementById('left-btn');
+        const rightBtn = document.getElementById('right-btn');
+
+        // --- Game Config ---
+        let canvasWidth, canvasHeight;
+        const PLAYER_EMOJI = '🧹';
+        const MESS_EMOJIS = ['💧', '💩', '🗑️', '🧻'];
+        const TOTAL_MESSES = 10;
+        const GAME_TIME = 60; // seconds
+        const CLEAN_TIME = 50; // frames
+
+        // --- Game State ---
+        let player, messes, cleanedCount, timeLeft, timerInterval, animationFrameId;
+        let keys = {};
+        let currentMess = null;
+        let cleanProgress = 0;
+        let gameState = 'START'; // START, PLAYING, WIN, LOSE
+
+        // --- Resize Canvas ---
+        function resizeCanvas() {
+            const container = canvas.parentElement;
+            canvas.width = container.clientWidth;
+            canvas.height = container.clientHeight;
+            canvasWidth = canvas.width;
+            canvasHeight = canvas.height;
+        }
+
+        // --- Game Initialization ---
+        function init() {
+            cleanedCount = 0;
+            timeLeft = GAME_TIME;
+            messes = [];
+            
+            const playerSize = canvasWidth * 0.05;
+            player = {
+                x: canvasWidth / 2,
+                y: canvasHeight / 2,
+                size: playerSize,
+                speed: 3,
+            };
+
+            // Generate messes, avoiding overlap
+            for (let i = 0; i < TOTAL_MESSES; i++) {
+                let newMess;
+                let overlap;
+                do {
+                    overlap = false;
+                    const messSize = canvasWidth * 0.06;
+                    newMess = {
+                        x: Math.random() * (canvasWidth - messSize),
+                        y: Math.random() * (canvasHeight - messSize),
+                        size: messSize,
+                        emoji: MESS_EMOJIS[Math.floor(Math.random() * MESS_EMOJIS.length)],
+                    };
+                    for (const existingMess of messes) {
+                        const dist = Math.hypot(newMess.x - existingMess.x, newMess.y - existingMess.y);
+                        if (dist < newMess.size + existingMess.size) {
+                            overlap = true;
+                            break;
+                        }
+                    }
+                } while (overlap);
+                messes.push(newMess);
+            }
+            
+            updateUI();
+            startGame();
+        }
+
+        function startGame() {
+            gameState = 'PLAYING';
+            modalScreen.classList.add('hidden');
+            if (timerInterval) clearInterval(timerInterval);
+            timerInterval = setInterval(() => {
+                timeLeft--;
+                updateUI();
+                if (timeLeft <= 0) {
+                    gameState = 'LOSE';
+                    clearInterval(timerInterval);
+                }
+            }, 1000);
+
+            if (animationFrameId) cancelAnimationFrame(animationFrameId);
+            gameLoop();
+        }
+
+        // --- Input Handling ---
+        window.addEventListener('keydown', (e) => { keys[e.key] = true; });
+        window.addEventListener('keyup', (e) => { keys[e.key] = false; });
+        
+        let touchMoveState = { up: false, down: false, left: false, right: false };
+        upBtn.addEventListener('touchstart', (e) => { e.preventDefault(); touchMoveState.up = true; });
+        upBtn.addEventListener('touchend', () => { touchMoveState.up = false; });
+        downBtn.addEventListener('touchstart', (e) => { e.preventDefault(); touchMoveState.down = true; });
+        downBtn.addEventListener('touchend', () => { touchMoveState.down = false; });
+        leftBtn.addEventListener('touchstart', (e) => { e.preventDefault(); touchMoveState.left = true; });
+        leftBtn.addEventListener('touchend', () => { touchMoveState.left = false; });
+        rightBtn.addEventListener('touchstart', (e) => { e.preventDefault(); touchMoveState.right = true; });
+        rightBtn.addEventListener('touchend', () => { touchMoveState.right = false; });
+
+        // --- Game Logic ---
+        function updatePlayer() {
+            if (keys['ArrowUp'] || touchMoveState.up) player.y -= player.speed;
+            if (keys['ArrowDown'] || touchMoveState.down) player.y += player.speed;
+            if (keys['ArrowLeft'] || touchMoveState.left) player.x -= player.speed;
+            if (keys['ArrowRight'] || touchMoveState.right) player.x += player.speed;
+
+            // Boundary checks
+            player.x = Math.max(0, Math.min(canvasWidth - player.size, player.x));
+            player.y = Math.max(0, Math.min(canvasHeight - player.size, player.y));
+        }
+
+        function checkCleaning() {
+            let onAMess = false;
+            for (let i = messes.length - 1; i >= 0; i--) {
+                const mess = messes[i];
+                const dist = Math.hypot((player.x + player.size/2) - (mess.x + mess.size/2), (player.y + player.size/2) - (mess.y + mess.size/2));
+                
+                if (dist < player.size / 2 + mess.size / 2) {
+                    onAMess = true;
+                    if (currentMess !== mess) {
+                        currentMess = mess;
+                        cleanProgress = 0;
+                    }
+                    
+                    cleanProgress++;
+                    if (cleanProgress >= CLEAN_TIME) {
+                        messes.splice(i, 1);
+                        cleanedCount++;
+                        currentMess = null;
+                        cleanProgress = 0;
+                        updateUI();
+                        if (cleanedCount >= TOTAL_MESSES) {
+                            gameState = 'WIN';
+                        }
+                    }
+                    break; // Only clean one mess at a time
+                }
+            }
+            if (!onAMess) {
+                currentMess = null;
+                cleanProgress = 0;
+            }
+        }
+
+        function updateUI() {
+            timerDisplay.textContent = `TIME: ${timeLeft}`;
+            messesDisplay.textContent = `MESSES: ${cleanedCount}/${TOTAL_MESSES}`;
+        }
+
+        // --- Drawing ---
+        function draw() {
+            ctx.clearRect(0, 0, canvasWidth, canvasHeight);
+            
+            // Draw bathroom features
+            ctx.fillStyle = '#A0A0A0'; // Stall color
+            ctx.fillRect(canvasWidth * 0.1, 0, canvasWidth * 0.2, canvasHeight * 0.4);
+            ctx.fillRect(canvasWidth * 0.4, 0, canvasWidth * 0.2, canvasHeight * 0.4);
+            ctx.fillRect(canvasWidth * 0.7, 0, canvasWidth * 0.2, canvasHeight * 0.4);
+            ctx.fillStyle = '#d4f1f9'; // Sink color
+            ctx.fillRect(canvasWidth * 0.1, canvasHeight * 0.8, canvasWidth * 0.8, canvasHeight * 0.15);
+
+
+            // Draw messes
+            for (const mess of messes) {
+                ctx.font = `${mess.size}px sans-serif`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(mess.emoji, mess.x + mess.size / 2, mess.y + mess.size / 2);
+            }
+            
+            // Draw player
+            ctx.font = `${player.size}px sans-serif`;
+            ctx.fillText(PLAYER_EMOJI, player.x + player.size / 2, player.y + player.size / 2);
+
+            // Draw cleaning progress bar
+            if (currentMess) {
+                const barWidth = player.size;
+                const barHeight = 10;
+                const barX = player.x;
+                const barY = player.y - barHeight - 5;
+                
+                ctx.fillStyle = '#FF0000';
+                ctx.fillRect(barX, barY, barWidth, barHeight);
+                
+                ctx.fillStyle = '#00FF00';
+                const progressWidth = (cleanProgress / CLEAN_TIME) * barWidth;
+                ctx.fillRect(barX, barY, progressWidth, barHeight);
+                
+                ctx.strokeStyle = '#000000';
+                ctx.strokeRect(barX, barY, barWidth, barHeight);
+            }
+        }
+
+        function showModal(title, text, buttonText, callback) {
+            modalTitle.textContent = title;
+            modalText.textContent = text;
+            modalBtn.textContent = buttonText;
+            
+            // Clone and replace the button to remove old event listeners
+            const newBtn = modalBtn.cloneNode(true);
+            modalBtn.parentNode.replaceChild(newBtn, modalBtn);
+            newBtn.addEventListener('click', callback, { once: true });
+            
+            // Re-assign the global reference
+            window.modalBtn = newBtn;
+            
+            modalScreen.style.display = 'flex';
+        }
+
+        // --- Game Loop ---
+        function gameLoop() {
+            if (gameState === 'PLAYING') {
+                updatePlayer();
+                checkCleaning();
+            }
+            
+            draw();
+
+            if (gameState === 'WIN') {
+                clearInterval(timerInterval);
+                showModal('PROMOTION!', 'Great job! You get to keep your job. For now.', 'Play Again', init);
+                gameState = 'ENDED';
+            } else if (gameState === 'LOSE') {
+                clearInterval(timerInterval);
+                showModal('YOU\'RE FIRED!', 'You were too slow. Pack your things.', 'Try Again', init);
+                gameState = 'ENDED';
+            }
+            
+            if (gameState !== 'ENDED') {
+                animationFrameId = requestAnimationFrame(gameLoop);
+            } else {
+                 if (animationFrameId) cancelAnimationFrame(animationFrameId);
+            }
+        }
+
+        // --- Initial Setup ---
+        window.addEventListener('resize', resizeCanvas);
+        window.onload = () => {
+            resizeCanvas();
+            showModal(
+                'JOB BRIEFING',
+                'The bathroom is a mess. Clean 10 items before the timer runs out. Use arrow keys or buttons.',
+                'Start Shift',
+                init
+            );
+        };
+    </script>
+</body>
+</html>
